@@ -1,0 +1,11 @@
+{
+  "name": "Template 1",
+  "tickets": [
+    {
+      "id": "1",
+      "title": "Ticket 1",
+      "description": "Description 1",
+      "creator": "User 1"
+    }
+  ]
+}

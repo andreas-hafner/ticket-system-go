@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Manager</title>
+</head>
+
+<body>
+    <h1>Ticket Manager</h1>
+    <div id="login-form-container">
+        <h2>Login</h2>
+        <form id="login-form">
+            <label for="username">Username:</label>
+            <input type="text" id="username" required>
+            <br>
+            <label for="password">Password:</label>
+            <input type="password" id="password" required>
+            <br>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+    <div id="ticket-app" style="display: none;">
+        <h2>Create Ticket</h2>
+        <form id="ticket-form">
+            <label for="ticket-id">Ticket ID:</label>
+            <input type="text" id="ticket-id" readonly>
+            <br>
+            <label for="ticket-template">Ticket Template:</label>
+            <select id="ticket-template">
+                <option value="">Choose a template</option>
+            </select>
+            <br>
+            <label for="ticket-title">Title:</label>
+            <input type="text" id="ticket-title" required>
+            <br>
+            <label for="ticket-description">Description:</label>
+            <textarea id="ticket-description" required></textarea>
+            <br>
+            <label for="ticket-creator">Creator:</label>
+            <input type="text" id="ticket-creator" required>
+            <br>
+            <button type="submit">Create Ticket</button>
+        </form>
+        <h2>Tickets</h2>
+        <ul id="ticket-list">
+        </ul>
+    </div>
+    <script>
+        async function fetchTickets() {
+            const response = await fetch('/api/tickets');
+            const tickets = await response.json();
+            displayTickets(tickets);
+        }
+
+        function displayTickets(tickets) {
+            const ticketList = document.getElementById('ticket-list');
+            ticketList.innerHTML = '';
+
+            tickets.forEach(ticket => {
+                const ticketElement = document.createElement('li');
+
+                const ticketDetails = document.createElement('div');
+                ticketDetails.innerHTML = `
+            <strong>ID:</strong> ${ticket.id}<br>
+            <strong>Title:</strong> ${ticket.title}<br>
+            <strong>Description:</strong> ${ticket.description}<br>
+            <strong>Creator:</strong> ${ticket.creator}<br>
+            <strong>Approver:</strong> ${ticket.approver ? ticket.approver : 'Not assigned'}
+        `;
+
+                if (ticket.comments && ticket.comments.length > 0) {
+                    const commentsList = document.createElement('ul');
+                    ticket.comments.forEach(comment => {
+                        const commentElement = document.createElement('li');
+                        commentElement.innerHTML = `
+                    <strong>${comment.author}:</strong> ${comment.text}
+                `;
+                        commentsList.appendChild(commentElement);
+                    });
+                    ticketDetails.appendChild(commentsList);
+                }
+
+                ticketElement.appendChild(ticketDetails);
+                ticketList.appendChild(ticketElement);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('login-form').addEventListener('submit', loginUser);
+        });
+
+        async function loginUser(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username, password }),
+            });
+
+            if (response.ok) {
+                document.getElementById('login-form-container').style.display = 'none';
+                document.getElementById('ticket-app').style.display = 'block';
+                fetchTickets()
+            } else {
+                alert('Invalid username or password');
+            }
+        }
+
+        document.getElementById('login-form').addEventListener('submit', loginUser);
+
+        async function fetchNextTicketID() {
+            const response = await fetch('/api/next-ticket-id');
+            const { nextID } = await response.json();
+            document.getElementById('ticket-id').value = nextID;
+        }
+
+        document.getElementById('ticket-form').addEventListener('submit', async event => {
+            event.preventDefault();
+
+            const id = document.getElementById('ticket-id').value;
+            const title = document.getElementById('ticket-title').value;
+            const description = document.getElementById('ticket-description').value;
+            const creator = document.getElementById('ticket-creator').value;
+
+            const response = await fetch('/api/tickets', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ id, title, description, creator }),
+            });
+
+            if (response.ok) {
+                fetchTickets();
+                fetchNextTicketID();
+                document.getElementById('ticket-form').reset();
+            } else {
+                alert('Error creating ticket');
+            }
+        });
+
+        async function loadTicketTemplates() {
+            const response = await fetch('/api/ticket-templates');
+            const templates = await response.json();
+            const selectElement = document.getElementById('ticket-template');
+
+            templates.forEach(template => {
+                const optionElement = document.createElement('option');
+                optionElement.value = template.id;
+                optionElement.textContent = template.name;
+                selectElement.appendChild(optionElement);
+            });
+
+            selectElement.addEventListener('change', async event => {
+                const selectedTemplateID = event.target.value;
+                if (selectedTemplateID) {
+                    const response = await fetch(`/api/ticket-templates/${selectedTemplateID}`);
+                    const template = await response.json();
+                    document.getElementById('ticket-title').value = template.title;
+                    document.getElementById('ticket-description').value = template.description;
+                } else {
+                    document.getElementById('ticket-title').value = '';
+                    document.getElementById('ticket-description').value = '';
+                }
+            });
+
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchNextTicketID();
+            loadTicketTemplates();
+        });
+
+        async function assignApprover(ticketID) {
+            const approver = prompt('Enter the name of the approver:');
+            if (!approver) return;
+
+            const response = await fetch(`/api/tickets/${ticketID}/assign-approver`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ approver }),
+            });
+
+            if (response.ok) {
+                fetchTickets();
+            } else {
+                alert('Error assigning approver');
+            }
+        }
+
+        function addComment(ticketID) {
+            const author = prompt('Enter your name:');
+            if (!author) return;
+
+            const text = prompt('Enter your comment:');
+            if (!text) return;
+
+            fetch(`/api/tickets/${ticketID}/add-comment`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ author, text }),
+            })
+                .then(response => {
+                    if (response.ok) {
+                        fetchTickets();
+                    } else {
+                        throw new Error('Error adding comment');
+                    }
+                })
+                .catch(error => {
+                    alert(error.message);
+                });
+        }
+    </script>
+</body>
+
+</html>
